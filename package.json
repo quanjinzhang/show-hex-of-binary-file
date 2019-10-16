@@ -1,0 +1,69 @@
+{
+	"name": "show-hex-of-binary-file",
+	"displayName": "Show Hex of Binary File",
+	"description": "Show Hex String preview of Binary File",
+	"version": "0.0.1",
+	"author": {
+		"name": "Jinquan Zhang",
+		"email": "jzhang@tenafe.com"
+	},
+	"publisher": "jzhang",
+	"engines": {
+		"vscode": "^1.39.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onCommand:extension.showBinHexStr"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "extension.showBinHexStr",
+				"title": "Select or Input absolute path of a binary file to show hex string"
+			}
+		],
+		"configuration":{
+			"title": "show-hex-of-binary-file",
+			"properties": {
+				"show-hex-of-binary-file.pickType": {
+					"type": "string",
+					"enum": ["select", "input"],
+					"default": "select",
+					"description": "Set the binary file pick type, \"select\" to open file dialog to select on or multiple binary file, \"input\" to input the path"
+				},
+				"show-hex-of-binary-file.readOnly": {
+					"type": "boolean",
+					"enum": ["true", "false"],
+					"default": "true",
+					"description": "Set the binary file hex string show type, the default value is readonly"
+				},
+				"show-hex-of-binary-file.checkInterval": {
+					"type": "number",
+					"default": 3000,
+					"description": "Set check interval of the modification of the binary file in milliseconds, the minimal interval is 500"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile",
+		"test": "node ./out/test/runTest.js"
+	},
+	"devDependencies": {
+		"@types/glob": "^7.1.1",
+		"@types/mocha": "^5.2.6",
+		"@types/node": "^10.12.21",
+		"@types/vscode": "^1.39.0",
+		"glob": "^7.1.4",
+		"mocha": "^6.1.4",
+		"typescript": "^3.3.1",
+		"tslint": "^5.12.1",
+		"vscode-test": "^1.2.0"
+	}
+}
