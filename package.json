@@ -15,7 +15,10 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:extension.showBinHexStr"
+		"onCommand:extension.showBinHexStr",
+		"onCommand:editor.title.showBinHexStr",
+		"onCommand:editor.context.showBinHexStr",
+		"onCommand:editor.title.context.showBinHexStr"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -23,6 +26,18 @@
 			{
 				"command": "extension.showBinHexStr",
 				"title": "Select or Input absolute path of a binary file to show hex string"
+			},
+			{
+				"command": "editor.context.showBinHexStr",
+				"title": "Show Hex Dump String"
+			},
+			{
+				"command": "editor.title.showBinHexStr",
+				"title": "Show Hex Dump String"
+			},
+			{
+				"command": "editor.title.context.showBinHexStr",
+				"title": "Show Hex Dump String"
 			}
 		],
 		"configuration": {
@@ -52,6 +67,26 @@
 					"description": "Set check interval of the modification of the binary file in milliseconds, the minimal interval is 500"
 				}
 			}
+		},
+		"menus":{
+			"editor/context": [
+				{
+					"command": "editor.context.showBinHexStr",
+					"alt": "editor.context.showBinHexStr"
+				}
+			],
+			"editor/title": [
+				{
+					"command": "editor.title.showBinHexStr",
+					"alt": "editor.title.showBinHexStr"
+				}
+			],
+			"editor/title/context": [
+				{
+					"command": "editor.title.context.showBinHexStr",
+					"alt": "editor.title.context.showBinHexStr"
+				}
+			]
 		}
 	},
 	"scripts": {

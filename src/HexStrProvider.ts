@@ -36,6 +36,7 @@ export default class HexStrProvider implements vscode.TextDocumentContentProvide
             hexStr += '\n';
             i += baseNum;
         }
+        console.log(`Finish to retrive hex dump string of "${filePath}"`);
         return hexStr;
     }
 }

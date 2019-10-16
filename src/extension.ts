@@ -5,16 +5,55 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import HexStrProvider from './HexStrProvider';
 
-const docList: Map<string, [vscode.TextDocument, number, number, boolean]> = new Map<string, [vscode.TextDocument, number, number, boolean]>();
+const docList: Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]> = new Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]>();
 let hexStrProvider = new HexStrProvider();
 let hexStrReadonly: boolean = true;
+enum DocEditorState { Closed, UnChanged, Changed }
 
 function getReadonlyCfg() {
-	let cfgReadonly = vscode.workspace.getConfiguration().get<string>("show-hex-of-binary-file.readOnly");
+	let cfgReadonly = vscode.workspace.getConfiguration().get<boolean>("show-hex-of-binary-file.readOnly");
 	if (typeof(cfgReadonly) === 'boolean') {
 		hexStrReadonly = cfgReadonly;
 	}
 	return hexStrReadonly;
+}
+
+/**
+ * add menu event handler
+ * @param uri the menu related doc uri
+ * @param event the menu event
+ */
+function menuFunc(uri: vscode.Uri, event: vscode.Event<any>) {
+	if (uri && uri.fsPath && fs.existsSync(uri.fsPath)) {
+		if (getReadonlyCfg()) {
+			showHexStrPreview(uri.fsPath);
+		} else {
+			showHexStrFromBinFile(uri.fsPath);
+		}
+	}
+}
+
+function hasChanged(key: string, docInfo: [vscode.TextDocument, number, number, boolean, vscode.TextEditor], isTimer?: boolean): DocEditorState {
+	if (!key || !docInfo || !docInfo[0] || !isTimer) {
+		if (key) {
+			docList.delete(key);
+		}
+		return DocEditorState.Closed;
+	}
+	let doc = docInfo[0];
+	// console.log(`${key.substring(1)} ${docInfo[0].isClosed}`);
+	if (doc.isClosed) {
+		docList.delete(key);
+		return DocEditorState.Closed;
+	}
+	let mtimeMs = docInfo[1];
+	let size = docInfo[2];
+	let filePath = key.substring(1);
+	let newStat:fs.Stats = fs.statSync(filePath);
+	if (mtimeMs !== fs.statSync(filePath).mtimeMs || size !== newStat.size) {
+		return DocEditorState.Changed;
+	}
+	return DocEditorState.UnChanged;
 }
 
 // this method is called when your extension is activated
@@ -40,7 +79,10 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 	let disposables: vscode.Disposable[] = [
 		vscode.workspace.registerTextDocumentContentProvider(HexStrProvider.scheme, hexStrProvider),
-		vscode.commands.registerCommand('extension.showBinHexStr', showBinHex)
+		vscode.commands.registerCommand('extension.showBinHexStr', showBinHex),
+		vscode.commands.registerCommand('editor.title.showBinHexStr', menuFunc),
+		vscode.commands.registerCommand('editor.context.showBinHexStr', menuFunc),
+		vscode.commands.registerCommand('editor.title.context.showBinHexStr', menuFunc),
 	];
 
 	context.subscriptions.push(...disposables);
@@ -66,53 +108,32 @@ export function activate(context: vscode.ExtensionContext) {
 		doing = true;
 		docList.forEach(async (docInfo, key) => {
 			// check each opened binary file every 1 second, and reload them if the source changed
-			let doc = docInfo[0];
-			if (doc.isClosed) {
-				closedDocs.push(key);
-			} else {
-				let mtimeMs = docInfo[1];
-				let size = docInfo[2];
+			let stat = hasChanged(key, docInfo, true);
+			if (stat === DocEditorState.Changed) {
 				let filePath = key.substring(1);
-				let newStat:fs.Stats = fs.statSync(filePath);
-				if (mtimeMs !== fs.statSync(filePath).mtimeMs || size !== newStat.size) {
-					console.log(`refresh the hex string of file: ${key} ${fs.statSync(filePath).mtimeMs} ${fs.statSync(filePath).size}`);
-					if (typeof(docInfo[3]) === 'boolean' && docInfo[3]) {
-						await showHexStrPreview(filePath, doc);
-					} else {
-						await showHexStrFromBinFile(filePath, true);
-					}
+				console.log(`refresh the hex string of file: ${key} ${fs.statSync(filePath).mtimeMs} ${fs.statSync(filePath).size}`);
+				if (typeof(docInfo[3]) === 'boolean' && docInfo[3]) {
+					await showHexStrPreview(filePath, docInfo[0]);
+				} else {
+					await showHexStrFromBinFile(filePath, true);
 				}
+			} else if (stat === DocEditorState.Closed) {
+				closedDocs.push(key);
 			}
 		});
 		doing = false;
 	}, interval);
 }
 
+/**
+ * show input box to input the absolute path of the binary file.
+ */
 async function inputToShowHex() {
 	const filePath = await vscode.window.showInputBox({
 		placeHolder: 'Please input absolute path of the binary file to preview.',
 	});
-	if (filePath && filePath !== '') {
-		if (fs.existsSync(filePath)) {
-			let uri = vscode.Uri.file(filePath);
-			try {
-				let doc = await vscode.workspace.openTextDocument(uri);
-				vscode.window.showInformationMessage(`'${filePath}' isn't a binary file. It's a text file!`);
-			} catch (e) {
-				// a binary file
-				if (e.toString().includes('File seems to be binary')) {
-					if (getReadonlyCfg()) {
-						showHexStrPreview(filePath);
-					} else {
-						showHexStrFromBinFile(filePath);
-					}
-				} else {
-					throw e;
-				}
-			}
-		} else {
-			vscode.window.showInformationMessage(`Please input a valid absolute path of a binary file to preview!\n'${filePath}' isn't valid!`);
-		}
+	if (filePath) {
+		showHexStrFromBinFile(filePath);
 	}
 }
 /**
@@ -147,19 +168,42 @@ async function showHexStrPreview(filePath: string, openedDoc?: vscode.TextDocume
 		return;
 	}
 	let abspath = path.normalize(filePath);
-	let previewTitle: string = HexStrProvider.scheme + ':' + filePath;
+	let key = '0' + abspath;
+	if (!openedDoc) {
+		// get the opened doc info list to check whether it has already been opended
+		if (docList.has(key)) {
+			let docInfo = docList.get(key);
+			if (docInfo && docInfo[0]) {
+				if (docInfo[0].isClosed) {
+					docList.delete(key);
+				} else {
+					let stat = hasChanged(key, docInfo);
+					if (stat === DocEditorState.Changed) {
+						openedDoc = docInfo[0];
+					} else if (stat === DocEditorState.UnChanged) {
+						// console.log(`The content hasn't been modified! "${abspath}"`);
+						return;
+					}
+				}
+			}
+		}
+	}
+	let previewTitle: string = HexStrProvider.scheme + ':///' + filePath.replace(/\\/g, '/');
 	let uri: vscode.Uri = vscode.Uri.parse(previewTitle, false);
 	if (openedDoc) {
 		let stat:fs.Stats = fs.statSync(abspath);
-		docList.set('0'+abspath, [openedDoc, stat.mtimeMs, stat.size, true]);
+		let docInfo = docList.get(key);
+		if (docInfo) {
+			docList.set(key, [openedDoc, stat.mtimeMs, stat.size, true, docInfo[4]]);
+		}
 		hexStrProvider.update(uri);
 		return;
 	}
 	let opened = false;
 	vscode.workspace.openTextDocument(uri).then(doc => {
 		let stat:fs.Stats = fs.statSync(abspath);
-		docList.set('0'+abspath, [doc, stat.mtimeMs, stat.size, true]);
 		vscode.window.showTextDocument(doc, {preview: false}).then(editor => {
+			docList.set(key, [doc, stat.mtimeMs, stat.size, true, editor]);
 			opened = true;
 		});
 	}, reason => {
@@ -207,6 +251,26 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 		return;
 	}
 	let abspath = path.normalize(filePath);
+	let key = '1' + abspath;
+	if (!alreadyOpen) {
+		// get the opened doc info list to check whether it has already been opended
+		if (docList.has(key)) {
+			let docInfo = docList.get(key);
+			if (docInfo && docInfo[0]) {
+				if (docInfo[0].isClosed) {
+					docList.delete(key);
+				} else {
+					let stat = hasChanged(key, docInfo);
+					if (stat === DocEditorState.Changed) {
+						alreadyOpen = true;
+					} else if (stat === DocEditorState.UnChanged) {
+						// console.log(`The content hasn't been modified! "${abspath}"`);
+						return;
+					}
+				}
+			}
+		}
+	}
 	let hexStr = getHexStrFromPath(filePath);
 	let filename = path.basename(filePath);
 	let previewTitle: string = 'untitled:' + filename;
@@ -214,8 +278,8 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 	let opened = false;
 	vscode.workspace.openTextDocument(uri).then(doc => {
 		let stat:fs.Stats = fs.statSync(abspath);
-		docList.set('1'+abspath, [doc, stat.mtimeMs, stat.size, false]);
 		vscode.window.showTextDocument(doc).then(textEditor => {
+			docList.set(key, [doc, stat.mtimeMs, stat.size, false, textEditor]);
 			textEditor.edit(editBuilder =>{
 				if (alreadyOpen) {
 					let range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(doc.lineCount, 57));
