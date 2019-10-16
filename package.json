@@ -40,8 +40,8 @@
 				"show-hex-of-binary-file.readOnly": {
 					"type": "boolean",
 					"enum": [
-						"true",
-						"false"
+						true,
+						false
 					],
 					"default": "true",
 					"description": "Set the binary file hex string show type, the default value is readonly"
