@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 export default class HexStrProvider implements vscode.TextDocumentContentProvider {
     static scheme = 'hexstr';
-    constructor() {
+    constructor(public log: vscode.OutputChannel) {
         this._onDidChange = new vscode.EventEmitter<vscode.Uri>();
     }
     private _onDidChange: vscode.EventEmitter<vscode.Uri>;
@@ -36,7 +36,7 @@ export default class HexStrProvider implements vscode.TextDocumentContentProvide
             hexStr += '\n';
             i += baseNum;
         }
-        console.log(`Finish to retrive hex dump string of "${filePath}"`);
+        this.log.appendLine(`Finish to retrive hex dump string of "${filePath}"`);
         return hexStr;
     }
 }

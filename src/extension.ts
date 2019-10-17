@@ -6,9 +6,10 @@ import * as vscode from 'vscode';
 import HexStrProvider from './HexStrProvider';
 
 const docList: Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]> = new Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]>();
-let hexStrProvider = new HexStrProvider();
+let hexStrProvider: HexStrProvider;
 let hexStrReadonly: boolean = true;
 enum DocEditorState { Closed, UnChanged, Changed }
+let log: vscode.OutputChannel;
 
 function getReadonlyCfg() {
 	let cfgReadonly = vscode.workspace.getConfiguration().get<boolean>("show-hex-of-binary-file.readOnly");
@@ -41,7 +42,7 @@ function hasChanged(key: string, docInfo: [vscode.TextDocument, number, number, 
 		return DocEditorState.Closed;
 	}
 	let doc = docInfo[0];
-	// console.log(`${key.substring(1)} ${docInfo[0].isClosed}`);
+	// log.appendLine(`${key.substring(1)} ${docInfo[0].isClosed}`);
 	if (doc.isClosed) {
 		docList.delete(key);
 		return DocEditorState.Closed;
@@ -62,7 +63,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "show-hex-of-binary-file" is now active!');
+	log = vscode.window.createOutputChannel("HexDumStr");
+	hexStrProvider = new HexStrProvider(log);
+	log.appendLine('Congratulations, your extension "show-hex-of-binary-file" is now active!');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
@@ -111,7 +114,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let stat = hasChanged(key, docInfo, true);
 			if (stat === DocEditorState.Changed) {
 				let filePath = key.substring(1);
-				console.log(`refresh the hex string of file: ${key} ${fs.statSync(filePath).mtimeMs} ${fs.statSync(filePath).size}`);
+				log.appendLine(`refresh the hex string of file: ${key} ${fs.statSync(filePath).mtimeMs} ${fs.statSync(filePath).size}`);
 				if (typeof(docInfo[3]) === 'boolean' && docInfo[3]) {
 					await showHexStrPreview(filePath, docInfo[0]);
 				} else {
@@ -181,14 +184,14 @@ async function showHexStrPreview(filePath: string, openedDoc?: vscode.TextDocume
 					if (stat === DocEditorState.Changed) {
 						openedDoc = docInfo[0];
 					} else if (stat === DocEditorState.UnChanged) {
-						// console.log(`The content hasn't been modified! "${abspath}"`);
+						// log.appendLine(`The content hasn't been modified! "${abspath}"`);
 						return;
 					}
 				}
 			}
 		}
 	}
-	let previewTitle: string = HexStrProvider.scheme + ':///' + filePath.replace(/\\/g, '/');
+	let previewTitle: string = HexStrProvider.scheme + ':' + filePath.replace(/\\/g, '/');
 	let uri: vscode.Uri = vscode.Uri.parse(previewTitle, false);
 	if (openedDoc) {
 		let stat:fs.Stats = fs.statSync(abspath);
@@ -264,7 +267,7 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 					if (stat === DocEditorState.Changed) {
 						alreadyOpen = true;
 					} else if (stat === DocEditorState.UnChanged) {
-						// console.log(`The content hasn't been modified! "${abspath}"`);
+						// log.appendLine(`The content hasn't been modified! "${abspath}"`);
 						return;
 					}
 				}
