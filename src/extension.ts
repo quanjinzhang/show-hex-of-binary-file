@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as child_process from 'child_process';
 import HexStrProvider from './HexStrProvider';
 
 const docList: Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]> = new Map<string, [vscode.TextDocument, number, number, boolean, vscode.TextEditor]>();
@@ -10,6 +11,7 @@ let hexStrProvider: HexStrProvider;
 let hexStrReadonly: boolean = true;
 enum DocEditorState { Closed, UnChanged, Changed }
 let log: vscode.OutputChannel;
+let terminal: vscode.Terminal;
 
 function getReadonlyCfg() {
 	let cfgReadonly = vscode.workspace.getConfiguration().get<boolean>("show-hex-of-binary-file.readOnly");
@@ -33,6 +35,26 @@ function menuFunc(uri: vscode.Uri, event: vscode.Event<any>) {
 		}
 	}
 }
+/**
+ *
+ * @param clickedUri the last clicked file
+ * @param uris the all selected file
+ */
+function explorerMenuFunc(clickedUri: vscode.Uri, uris: vscode.Uri[]) {
+	uris.forEach(async uri => {
+		if (uri.scheme === 'file') {
+			let filePath = uri.fsPath;
+			let stat = fs.statSync(filePath);
+			if (stat.isFile) {
+				if (getReadonlyCfg()) {
+					await showHexStrPreview(filePath);
+				} else {
+					await showHexStrFromBinFile(filePath);
+				}
+			}
+		}
+	});
+}
 
 function hasChanged(key: string, docInfo: [vscode.TextDocument, number, number, boolean, vscode.TextEditor], isTimer?: boolean): DocEditorState {
 	if (!key || !docInfo || !docInfo[0] || !isTimer) {
@@ -55,6 +77,52 @@ function hasChanged(key: string, docInfo: [vscode.TextDocument, number, number, 
 		return DocEditorState.Changed;
 	}
 	return DocEditorState.UnChanged;
+}
+
+async function inputToExecuteInTerminal() {
+	vscode.window.showInputBox({
+		placeHolder: 'Please input the shell command you want to execute.',
+	}).then(cmd => {
+		if (cmd && cmd.trim() !== '') {
+			if (!terminal) {
+				terminal = vscode.window.createTerminal("jzhang test");
+			}
+			terminal.show();
+			if (!terminal) {
+				vscode.window.showErrorMessage("Failed to create Terminal!");
+				return;
+			}
+			terminal.sendText(cmd);
+		}
+	});
+}
+
+async function inputToExecuteInNodejs() {
+	vscode.window.showInputBox({
+		placeHolder: 'Please input the shell command you want to execute and show result.',
+	}).then(cmd => {
+		if (cmd && cmd.trim() !== '') {
+			child_process.exec(cmd, (error, stdout, stderr) => {
+				let output: string = '';
+				if (error) {
+					output += error.toString() + "\n";
+				}
+				if (stdout) {
+					output += stdout + "\n";
+				}
+				if (stderr) {
+					output += stderr + "\n";
+				}
+				vscode.workspace.openTextDocument(vscode.Uri.parse('untitled:cmdResult')).then(doc=>{
+					vscode.window.showTextDocument(doc).then(textEditor => {
+						textEditor.edit(editBuilder => {
+							editBuilder.insert(new vscode.Position(doc.lineCount, 0), output);
+						});
+					});
+				});
+			});
+		}
+	});
 }
 
 // this method is called when your extension is activated
@@ -86,6 +154,9 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('editor.title.showBinHexStr', menuFunc),
 		vscode.commands.registerCommand('editor.context.showBinHexStr', menuFunc),
 		vscode.commands.registerCommand('editor.title.context.showBinHexStr', menuFunc),
+		vscode.commands.registerCommand('explorer.context.showBinHexStr', explorerMenuFunc),
+		vscode.commands.registerCommand('extension.execute.interminal', inputToExecuteInTerminal),
+		vscode.commands.registerCommand('extension.execute.innodejs', inputToExecuteInNodejs),
 	];
 
 	context.subscriptions.push(...disposables);
@@ -203,45 +274,28 @@ async function showHexStrPreview(filePath: string, openedDoc?: vscode.TextDocume
 		return;
 	}
 	let opened = false;
+	let stat:fs.Stats = fs.statSync(abspath);
+	let loopInterval = 30;
+	if (stat.size > 200000) {
+		// let loop interval as 1 second if the file size is larger than 200 kb
+		loopInterval = 1000;
+	}
 	vscode.workspace.openTextDocument(uri).then(doc => {
-		let stat:fs.Stats = fs.statSync(abspath);
 		vscode.window.showTextDocument(doc, {preview: false}).then(editor => {
 			docList.set(key, [doc, stat.mtimeMs, stat.size, true, editor]);
 			opened = true;
+		}, err => {
+			log.appendLine(err);
+			opened = true;
 		});
+
 	}, reason => {
 		vscode.window.showInformationMessage(reason.toString());
 	});
 	while (!opened) {
 		// wait the file open
-		await new Promise(done => setTimeout(done, 30));
+		await new Promise(done => setTimeout(done, loopInterval));
 	}
-}
-
-/**
- * get the hex string of the binary file
- * @param filePath the file path of the binary file
- */
-function getHexStrFromPath(filePath: string): string {
-	const baseNum = 16;
-	let data = fs.readFileSync(filePath);
-	let hexStr = '';
-	for (let i=0; i<data.length;) {
-		if (i%baseNum === 0) {
-			hexStr += i.toString(baseNum).padStart(8, '0') + ': ';
-		}
-		hexStr += data[i].toString(baseNum).padStart(2, '0');
-		let j = 1;
-		for (;j<baseNum; j++) {
-			if ((i+j) >= data.length) {
-				break;
-			}
-			hexStr += ' ' + (data[i+j]).toString(baseNum).padStart(2, '0');
-		}
-		hexStr += '\n';
-		i += baseNum;
-	}
-	return hexStr;
 }
 
 /**
@@ -274,7 +328,7 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 			}
 		}
 	}
-	let hexStr = getHexStrFromPath(filePath);
+	let hexStr = HexStrProvider.getHexStrFromPath(filePath);
 	let filename = path.basename(filePath);
 	let previewTitle: string = 'untitled:' + filename;
 	let uri: vscode.Uri = vscode.Uri.parse(previewTitle, false);
@@ -304,4 +358,8 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	if (terminal) {
+		terminal.dispose();
+	}
+}

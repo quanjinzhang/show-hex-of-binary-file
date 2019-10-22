@@ -18,25 +18,38 @@ export default class HexStrProvider implements vscode.TextDocumentContentProvide
         if (!filePath || filePath.trim() === '' || !fs.existsSync(filePath)) {
             return "";
         }
+        let hexStr = HexStrProvider.getHexStrFromPath(filePath);
+        this.log.appendLine(`Finish to retrive hex dump string of "${filePath}"`);
+        return hexStr;
+    }
+
+    /**
+     * get the hex string of the binary file
+     * @param filePath the file path of the binary file
+     */
+    static getHexStrFromPath(filePath: string): string {
         const baseNum = 16;
         let data = fs.readFileSync(filePath);
         let hexStr = '';
+        let byteCountPerLine = vscode.workspace.getConfiguration().get<number>("show-hex-of-binary-file.byteCountPerLine");
+        if (typeof(byteCountPerLine) !== 'number' || byteCountPerLine%16 !== 0) {
+            byteCountPerLine = 16;
+        }
         for (let i=0; i<data.length;) {
-            if (i%baseNum === 0) {
+            if (i%byteCountPerLine === 0) {
                 hexStr += i.toString(baseNum).toUpperCase().padStart(8, '0') + ': ';
             }
             hexStr += data[i].toString(baseNum).toUpperCase().padStart(2, '0');
             let j = 1;
-            for (;j<baseNum; j++) {
+            for (;j<byteCountPerLine; j++) {
                 if ((i+j) >= data.length) {
                     break;
                 }
                 hexStr += ' ' + (data[i+j]).toString(baseNum).toUpperCase().padStart(2, '0');
             }
             hexStr += '\n';
-            i += baseNum;
+            i += byteCountPerLine;
         }
-        this.log.appendLine(`Finish to retrive hex dump string of "${filePath}"`);
         return hexStr;
     }
 }

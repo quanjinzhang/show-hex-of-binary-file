@@ -18,7 +18,10 @@
 		"onCommand:extension.showBinHexStr",
 		"onCommand:editor.title.showBinHexStr",
 		"onCommand:editor.context.showBinHexStr",
-		"onCommand:editor.title.context.showBinHexStr"
+		"onCommand:editor.title.context.showBinHexStr",
+		"onCommand:explorer.context.showBinHexStr",
+		"onCommand:extension.execute.interminal",
+		"onCommand:extension.execute.innodejs"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -38,6 +41,18 @@
 			{
 				"command": "editor.title.context.showBinHexStr",
 				"title": "Show Hex Dump String"
+			},
+			{
+				"command": "explorer.context.showBinHexStr",
+				"title": "Show Hex Dump String"
+			},
+			{
+				"command": "extension.execute.interminal",
+				"title": "jzhang Test: input shell command to execute on terminal"
+			},
+			{
+				"command": "extension.execute.innodejs",
+				"title": "jzhang Test: input shell command to execute and show result"
 			}
 		],
 		"configuration": {
@@ -50,7 +65,7 @@
 						"input"
 					],
 					"default": "select",
-					"description": "Set the binary file pick type, \"select\" to open file dialog to select on or multiple binary file, \"input\" to input the path"
+					"description": "Set the binary file pick type, `select` to open file dialog to select on or multiple binary file, `input` to input the path"
 				},
 				"show-hex-of-binary-file.readOnly": {
 					"type": "boolean",
@@ -58,17 +73,30 @@
 						true,
 						false
 					],
-					"default": "true",
-					"description": "Set the binary file hex string show type, the default value is readonly"
+					"default": true,
+					"description": "Set the binary file hex string show type, the default value is `true`"
 				},
 				"show-hex-of-binary-file.checkInterval": {
 					"type": "number",
 					"default": 3000,
-					"description": "Set check interval of the modification of the binary file in milliseconds, the minimal interval is 500"
+					"description": "Set check interval of the modification of the binary file in milliseconds, the minimal interval is `500`, the default value is `3000`"
+				},
+				"show-hex-of-binary-file.byteCountPerLine": {
+					"type": "number",
+					"enum": [16, 32, 48],
+					"default": 16,
+					"description": "Set bytes count shown in one line, the default value is `16`"
 				}
 			}
 		},
 		"menus":{
+			"explorer/context": [
+				{
+					"command": "explorer.context.showBinHexStr",
+					"alt": "explorer.context.showBinHexStr",
+					"when": "isFileSystemResource && resourceScheme==file"
+				}
+			],
 			"editor/context": [
 				{
 					"command": "editor.context.showBinHexStr",
