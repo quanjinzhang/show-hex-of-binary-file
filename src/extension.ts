@@ -57,7 +57,7 @@ function explorerMenuFunc(clickedUri: vscode.Uri, uris: vscode.Uri[]) {
 }
 
 function hasChanged(key: string, docInfo: [vscode.TextDocument, number, number, boolean, vscode.TextEditor], isTimer?: boolean): DocEditorState {
-	if (!key || !docInfo || !docInfo[0] || !isTimer) {
+	if (!key || !docInfo || !docInfo[0]) {
 		if (key) {
 			docList.delete(key);
 		}
@@ -114,7 +114,7 @@ async function inputToExecuteInNodejs() {
 					output += stderr + "\n";
 				}
 				vscode.workspace.openTextDocument(vscode.Uri.parse('untitled:cmdResult')).then(doc=>{
-					vscode.window.showTextDocument(doc).then(textEditor => {
+					vscode.window.showTextDocument(doc, {preview: false}).then(textEditor => {
 						textEditor.edit(editBuilder => {
 							editBuilder.insert(new vscode.Position(doc.lineCount, 0), output);
 						});
@@ -185,9 +185,10 @@ export function activate(context: vscode.ExtensionContext) {
 			let stat = hasChanged(key, docInfo, true);
 			if (stat === DocEditorState.Changed) {
 				let filePath = key.substring(1);
-				log.appendLine(`refresh the hex string of file: ${key} ${fs.statSync(filePath).mtimeMs} ${fs.statSync(filePath).size}`);
+				let newStat = fs.statSync(filePath);
+				log.appendLine(`refresh the hex string of file: ${key} ${newStat.mtimeMs} ${newStat.size}`);
 				if (typeof(docInfo[3]) === 'boolean' && docInfo[3]) {
-					await showHexStrPreview(filePath, docInfo[0]);
+					await showHexStrPreview(filePath);
 				} else {
 					await showHexStrFromBinFile(filePath, true);
 				}
@@ -237,48 +238,28 @@ async function selectToShowHex() {
  * @param filePath the absolute path of the binary file
  * @param alreadyOpen the already opened flag of the binary file
  */
-async function showHexStrPreview(filePath: string, openedDoc?: vscode.TextDocument): Promise<void> {
+async function showHexStrPreview(filePath: string): Promise<void> {
 	if (!filePath || filePath.trim() === '' || !fs.existsSync(filePath)) {
 		return;
 	}
 	let abspath = path.normalize(filePath);
 	let key = '0' + abspath;
-	if (!openedDoc) {
-		// get the opened doc info list to check whether it has already been opended
-		if (docList.has(key)) {
-			let docInfo = docList.get(key);
-			if (docInfo && docInfo[0]) {
-				if (docInfo[0].isClosed) {
-					docList.delete(key);
-				} else {
-					let stat = hasChanged(key, docInfo);
-					if (stat === DocEditorState.Changed) {
-						openedDoc = docInfo[0];
-					} else if (stat === DocEditorState.UnChanged) {
-						// log.appendLine(`The content hasn't been modified! "${abspath}"`);
-						return;
-					}
-				}
-			}
-		}
-	}
-	let previewTitle: string = HexStrProvider.scheme + ':' + filePath.replace(/\\/g, '/');
+	let previewTitle: string = HexStrProvider.scheme + ':' + filePath.replace(/\\/g, '/') + '.hexstr';
 	let uri: vscode.Uri = vscode.Uri.parse(previewTitle, false);
-	if (openedDoc) {
-		let stat:fs.Stats = fs.statSync(abspath);
-		let docInfo = docList.get(key);
-		if (docInfo) {
-			docList.set(key, [openedDoc, stat.mtimeMs, stat.size, true, docInfo[4]]);
-		}
-		hexStrProvider.update(uri);
-		return;
-	}
 	let opened = false;
 	let stat:fs.Stats = fs.statSync(abspath);
 	let loopInterval = 30;
 	if (stat.size > 200000) {
 		// let loop interval as 1 second if the file size is larger than 200 kb
 		loopInterval = 1000;
+	}
+	let docInfo = docList.get(key);
+	if (docInfo) {
+		docInfo[1] = stat.mtimeMs;
+		docInfo[2] = stat.size;
+		hexStrProvider.update(uri);
+		vscode.window.showTextDocument(uri, {preview: false});
+		return;
 	}
 	vscode.workspace.openTextDocument(uri).then(doc => {
 		vscode.window.showTextDocument(doc, {preview: false}).then(editor => {
@@ -330,16 +311,16 @@ async function showHexStrFromBinFile(filePath: string, alreadyOpen?: boolean): P
 	}
 	let hexStr = HexStrProvider.getHexStrFromPath(filePath);
 	let filename = path.basename(filePath);
-	let previewTitle: string = 'untitled:' + filename;
+	let previewTitle: string = 'untitled:' + filename + '.hexstr';
 	let uri: vscode.Uri = vscode.Uri.parse(previewTitle, false);
 	let opened = false;
 	vscode.workspace.openTextDocument(uri).then(doc => {
 		let stat:fs.Stats = fs.statSync(abspath);
-		vscode.window.showTextDocument(doc).then(textEditor => {
+		vscode.window.showTextDocument(doc, {preview: false}).then(textEditor => {
 			docList.set(key, [doc, stat.mtimeMs, stat.size, false, textEditor]);
 			textEditor.edit(editBuilder =>{
 				if (alreadyOpen) {
-					let range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(doc.lineCount, 57));
+					let range = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(doc.lineCount, 151));
 					editBuilder.replace(range, hexStr);
 				} else {
 					editBuilder.insert(new vscode.Position(0, 0), hexStr);

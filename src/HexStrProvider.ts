@@ -14,7 +14,7 @@ export default class HexStrProvider implements vscode.TextDocumentContentProvide
     }
 
     provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): string {
-        let filePath = uri.fsPath;
+        let filePath = uri.fsPath.replace(/\.hexstr$/, '');
         if (!filePath || filePath.trim() === '' || !fs.existsSync(filePath)) {
             return "";
         }
